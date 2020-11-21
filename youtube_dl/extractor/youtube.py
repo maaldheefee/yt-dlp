@@ -33,7 +33,6 @@ from ..utils import (
     get_element_by_id,
     int_or_none,
     mimetype2ext,
-    orderedSet,
     parse_codecs,
     parse_duration,
     remove_quotes,
@@ -61,6 +60,11 @@ class YoutubeBaseInfoExtractor(InfoExtractor):
     _LOOKUP_URL = 'https://accounts.google.com/_/signin/sl/lookup'
     _CHALLENGE_URL = 'https://accounts.google.com/_/signin/sl/challenge'
     _TFA_URL = 'https://accounts.google.com/_/signin/challenge?hl=en&TL={0}'
+
+    _RESERVED_NAMES = (
+        r'course|embed|watch|w|results|storefront|'
+        r'shared|index|account|reporthistory|t/terms|about|upload|signin|logout|'
+        r'feed/(watch_later|history|subscriptions|library|trending|recommended)')
 
     _NETRC_MACHINE = 'youtube'
     # If True it will raise an error if no login info is provided
@@ -2381,7 +2385,12 @@ class YoutubeIE(YoutubeBaseInfoExtractor):
 
 class YoutubeTabIE(YoutubeBaseInfoExtractor):
     IE_DESC = 'YouTube.com tab'
-    _VALID_URL = r'https?://(?:\w+\.)?(?:youtube(?:kids)?\.com|invidio\.us)/(?:(?:channel|c|user)/|(?:playlist|watch)\?.*?\blist=)(?P<id>[^/?#&]+)'
+    _VALID_URL = (
+        r'https?://(?:\w+\.)?(?:youtube(?:kids)?\.com|invidio\.us)/'
+        r'(?:(?!(%s)([/#?]|$))|'
+        r'(?:channel|c|user)/|'
+        r'(?:playlist|watch)\?.*?\blist=)'
+        r'(?P<id>[^/?#&]+)') % YoutubeBaseInfoExtractor._RESERVED_NAMES
     IE_NAME = 'youtube:tab'
 
     _TESTS = [{
@@ -2741,6 +2750,26 @@ class YoutubeTabIE(YoutubeBaseInfoExtractor):
                 continue
             yield self._extract_video(renderer)
 
+    def _itemSection_entries(self, item_sect_renderer):
+        for content in item_sect_renderer['contents']:
+            if not isinstance(content, dict):
+                continue
+            renderer = content.get('videoRenderer', {})
+            if not isinstance(renderer, dict):
+                continue
+            video_id = renderer.get('videoId')
+            if not video_id:
+                continue
+            yield self._extract_video(renderer)
+
+    def _rich_entries(self, rich_grid_renderer):
+        renderer = try_get(
+            rich_grid_renderer, lambda x: x['content']['videoRenderer'], dict)
+        video_id = renderer.get('videoId')
+        if not video_id:
+            return
+        yield self._extract_video(renderer)
+
     def _video_entry(self, video_renderer):
         video_id = video_renderer.get('videoId')
         if video_id:
@@ -2832,49 +2861,67 @@ class YoutubeTabIE(YoutubeBaseInfoExtractor):
             }
 
     def _entries(self, tab, identity_token):
-        continuation = None
-        slr_contents = try_get(tab, lambda x: x['sectionListRenderer']['contents'], list) or []
-        for slr_content in slr_contents:
-            if not isinstance(slr_content, dict):
-                continue
-            is_renderer = try_get(slr_content, lambda x: x['itemSectionRenderer'], dict)
-            if not is_renderer:
-                continue
-            isr_contents = try_get(is_renderer, lambda x: x['contents'], list) or []
-            for isr_content in isr_contents:
-                if not isinstance(isr_content, dict):
-                    continue
-                renderer = isr_content.get('playlistVideoListRenderer')
-                if renderer:
-                    for entry in self._playlist_entries(renderer):
-                        yield entry
-                    continuation = self._extract_continuation(renderer)
-                    continue
-                renderer = isr_content.get('gridRenderer')
-                if renderer:
-                    for entry in self._grid_entries(renderer):
-                        yield entry
-                    continuation = self._extract_continuation(renderer)
-                    continue
-                renderer = isr_content.get('shelfRenderer')
-                if renderer:
-                    for entry in self._shelf_entries(renderer):
-                        yield entry
-                    continue
-                renderer = isr_content.get('backstagePostThreadRenderer')
-                if renderer:
-                    for entry in self._post_thread_entries(renderer):
-                        yield entry
-                    continuation = self._extract_continuation(renderer)
-                    continue
-                renderer = isr_content.get('videoRenderer')
-                if renderer:
-                    entry = self._video_entry(renderer)
-                    if entry:
-                        yield entry
 
-            if not continuation:
-                continuation = self._extract_continuation(is_renderer)
+        def extract_entries(parent_renderer):
+            slr_contents = try_get(parent_renderer, lambda x: x['contents'], list) or []
+            for slr_content in slr_contents:
+                if not isinstance(slr_content, dict):
+                    continue
+                is_renderer = try_get(slr_content, lambda x: x['itemSectionRenderer'], dict)
+                if not is_renderer:
+                    renderer = slr_content.get('richItemRenderer')
+                    if renderer:
+                        for entry in self._rich_entries(renderer):
+                            yield entry
+                        continuation_list[0] = self._extract_continuation(parent_renderer)
+                    continue
+                isr_contents = try_get(is_renderer, lambda x: x['contents'], list) or []
+                for isr_content in isr_contents:
+                    if not isinstance(isr_content, dict):
+                        continue
+                    renderer = isr_content.get('playlistVideoListRenderer')
+                    if renderer:
+                        for entry in self._playlist_entries(renderer):
+                            yield entry
+                        continuation_list[0] = self._extract_continuation(renderer)
+                        continue
+                    renderer = isr_content.get('gridRenderer')
+                    if renderer:
+                        for entry in self._grid_entries(renderer):
+                            yield entry
+                        continuation_list[0] = self._extract_continuation(renderer)
+                        continue
+                    renderer = isr_content.get('shelfRenderer')
+                    if renderer:
+                        for entry in self._shelf_entries(renderer):
+                            yield entry
+                        continuation_list[0] = self._extract_continuation(parent_renderer)
+                        continue
+                    renderer = isr_content.get('backstagePostThreadRenderer')
+                    if renderer:
+                        for entry in self._post_thread_entries(renderer):
+                            yield entry
+                        continuation_list[0] = self._extract_continuation(renderer)
+                        continue
+                    renderer = isr_content.get('videoRenderer')
+                    if renderer:
+                        entry = self._video_entry(renderer)
+                        if entry:
+                            yield entry
+                if not continuation_list[0]:
+                    continuation_list[0] = self._extract_continuation(is_renderer)
+                if not continuation_list[0]:
+                    continuation_list[0] = self._extract_continuation(parent_renderer)
+
+        continuation_list = [None]  # Python 2 doesnot support nonlocal
+        parent_renderer = (
+            try_get(tab, lambda x: x['sectionListRenderer'], dict)
+            or try_get(tab, lambda x: x['richGridRenderer'], dict) or {})
+        if parent_renderer:
+            for entry in extract_entries(parent_renderer):
+                yield entry
+
+        continuation = continuation_list[0]
 
         headers = {
             'x-youtube-client-name': '1',
@@ -2885,6 +2932,8 @@ class YoutubeTabIE(YoutubeBaseInfoExtractor):
 
         for page_num in itertools.count(1):
             if not continuation:
+                break
+            if hasattr(self, '_MAX_PAGES') and page_num > self._MAX_PAGES:
                 break
             browse = self._download_json(
                 'https://www.youtube.com/browse_ajax', None,
@@ -2917,6 +2966,13 @@ class YoutubeTabIE(YoutubeBaseInfoExtractor):
                         yield entry
                     continuation = self._extract_continuation(continuation_renderer)
                     continue
+                continuation_renderer = continuation_contents.get('sectionListContinuation')
+                if continuation_renderer:
+                    continuation_list = [None]
+                    for entry in extract_entries(continuation_renderer):
+                        yield entry
+                    continuation = continuation_list[0]
+                    continue
 
             continuation_items = try_get(
                 response, lambda x: x['onResponseReceivedActions'][0]['appendContinuationItemsAction']['continuationItems'], list)
@@ -2931,7 +2987,12 @@ class YoutubeTabIE(YoutubeBaseInfoExtractor):
                         yield entry
                     continuation = self._extract_continuation(video_list_renderer)
                     continue
-
+                renderer = continuation_item.get('itemSectionRenderer')
+                if renderer:
+                    for entry in self._itemSection_entries(renderer):
+                        yield entry
+                    continuation = self._extract_continuation({'contents': continuation_items})
+                    continue
             break
 
     @staticmethod
@@ -2969,6 +3030,7 @@ class YoutubeTabIE(YoutubeBaseInfoExtractor):
         selected_tab = self._extract_selected_tab(tabs)
         renderer = try_get(
             data, lambda x: x['metadata']['channelMetadataRenderer'], dict)
+        playlist_id = None
         if renderer:
             channel_title = renderer.get('title') or item_id
             tab_title = selected_tab.get('title')
@@ -2983,6 +3045,8 @@ class YoutubeTabIE(YoutubeBaseInfoExtractor):
             title = renderer.get('title')
             description = None
             playlist_id = item_id
+        if playlist_id is None:
+            return None
         playlist = self.playlist_result(
             self._entries(selected_tab['content'], identity_token),
             playlist_id=playlist_id, playlist_title=title,
@@ -3246,11 +3310,11 @@ class YoutubeSearchDateIE(YoutubeSearchIE):
     _SEARCH_PARAMS = 'CAI%3D'
 
 
-r"""
-class YoutubeSearchURLIE(YoutubeSearchIE):
+class YoutubeSearchURLIE(InfoExtractor):
     IE_DESC = 'YouTube.com search URLs'
     IE_NAME = 'youtube:search_url'
-    _VALID_URL = r'https?://(?:www\.)?youtube\.com/results\?(.*?&)?(?:search_query|q)=(?P<query>[^&]+)(?:[&]|$)'
+    _VALID_URL = r'https?://(?:www\.)?youtube\.com/results/?(?:\?|\?[^#]*?&)(?:sp=(?P<param1>[^&#]+)&(?:[^#]*&)?)?(?:q|search_query)=(?P<query>[^#&]+)(?:[^#]*?&sp=(?P<param2>[^#&]+))?'
+    #_MAX_RESULTS = 100
     _TESTS = [{
         'url': 'https://www.youtube.com/results?baz=bar&search_query=youtube-dl+test+video&filters=video&lclk=video',
         'playlist_mincount': 5,
@@ -3265,17 +3329,21 @@ class YoutubeSearchURLIE(YoutubeSearchIE):
     def _real_extract(self, url):
         mobj = re.match(self._VALID_URL, url)
         query = compat_urllib_parse_unquote_plus(mobj.group('query'))
-        webpage = self._download_webpage(url, query)
-        return self.playlist_result(self._process_page(webpage), playlist_title=query)
-"""
+        IE = YoutubeSearchIE(self._downloader)
+        IE._SEARCH_PARAMS = mobj.group('param1') or mobj.group('param2')
+        if hasattr(self, _MAX_RESULTS)
+            IE._MAX_RESULTS = self._MAX_RESULTS
+        return IE._get_n_results(query, IE._MAX_RESULTS)
 
 
-class YoutubeFeedsInfoExtractor(YoutubeBaseInfoExtractor):
+class YoutubeFeedsInfoExtractor(YoutubeTabIE):
     """
     Base class for feed extractors
     Subclasses must define the _FEED_NAME and _PLAYLIST_TITLE properties.
     """
     _LOGIN_REQUIRED = True
+    # _MAX_PAGES = 5
+    _TESTS = []
 
     @property
     def IE_NAME(self):
@@ -3284,50 +3352,39 @@ class YoutubeFeedsInfoExtractor(YoutubeBaseInfoExtractor):
     def _real_initialize(self):
         self._login()
 
-    def _entries(self, page):
-        # The extraction process is the same as for playlists, but the regex
-        # for the video ids doesn't contain an index
-        ids = []
-        more_widget_html = content_html = page
-        for page_num in itertools.count(1):
-            matches = re.findall(r'href="\s*/watch\?v=([0-9A-Za-z_-]{11})', content_html)
+    def _shelf_entries(self, shelf_renderer):
+        renderer = try_get(shelf_renderer, lambda x: x['content']['gridRenderer'], dict)
+        if not renderer:
+            return
+        for entry in self._grid_entries(renderer):
+            yield entry
 
-            # 'recommended' feed has infinite 'load more' and each new portion spins
-            # the same videos in (sometimes) slightly different order, so we'll check
-            # for unicity and break when portion has no new videos
-            new_ids = list(filter(lambda video_id: video_id not in ids, orderedSet(matches)))
-            if not new_ids:
-                break
-
-            ids.extend(new_ids)
-
-            for entry in self._ids_to_results(new_ids):
-                yield entry
-
-            mobj = re.search(r'data-uix-load-more-href="/?(?P<more>[^"]+)"', more_widget_html)
-            if not mobj:
-                break
-
-            more = self._download_json(
-                'https://www.youtube.com/%s' % mobj.group('more'), self._PLAYLIST_TITLE,
-                'Downloading page #%s' % page_num,
-                transform_source=uppercase_escape,
-                headers=self._YOUTUBE_CLIENT_HEADERS)
-            content_html = more['content_html']
-            more_widget_html = more['load_more_widget_html']
+    def _extract_from_tabs(self, item_id, webpage, data, tabs, identity_token):
+        selected_tab = self._extract_selected_tab(tabs)
+        return self.playlist_result(
+            self._entries(selected_tab['content'], identity_token),
+            playlist_title=self._PLAYLIST_TITLE)
 
     def _real_extract(self, url):
-        page = self._download_webpage(
-            'https://www.youtube.com/feed/%s' % self._FEED_NAME,
-            self._PLAYLIST_TITLE)
-        return self.playlist_result(
-            self._entries(page), playlist_title=self._PLAYLIST_TITLE)
+        item_id = self._FEED_NAME
+        url = 'https://www.youtube.com/feed/%s' % self._FEED_NAME
+        webpage = self._download_webpage(url, item_id)
+        identity_token = self._search_regex(
+            r'\bID_TOKEN["\']\s*:\s*["\'](.+?)["\']', webpage,
+            'identity token', default=None)
+        data = self._extract_yt_initial_data(item_id, webpage)
+        tabs = try_get(
+            data, lambda x: x['contents']['twoColumnBrowseResultsRenderer']['tabs'], list)
+        if tabs:
+            return self._extract_from_tabs(item_id, webpage, data, tabs, identity_token)
+        # Failed to recognize
+        raise ExtractorError('Unable to recognize feed page')
 
 
 class YoutubeWatchLaterIE(InfoExtractor):
     IE_NAME = 'youtube:watchlater'
-    IE_DESC = 'Youtube watch later list, ":ytwatchlater" for short (requires authentication)'
-    _VALID_URL = r'https?://(?:www\.)?youtube\.com/feed/watch_later|:ytwatchlater'
+    IE_DESC = 'Youtube watch later list, ":ytwatchlater" or "WL" for short (requires authentication)'
+    _VALID_URL = r'https?://(?:www\.)?youtube\.com/feed/watch_later|:ytwatchlater|WL'
 
     _TESTS = [{
         'url': 'https://www.youtube.com/feed/watch_later',
@@ -3342,16 +3399,31 @@ class YoutubeWatchLaterIE(InfoExtractor):
             'https://www.youtube.com/playlist?list=WL', ie=YoutubeTabIE.ie_key())
 
 
+class YoutubeFavouritesIE(InfoExtractor):
+    IE_NAME = 'youtube:favourites'
+    IE_DESC = 'YouTube.com liked videos, ":ytfav" or "LL" for short (requires authentication)'
+    _VALID_URL = r':ytfav(?:ou?rite)s?|LL'
+
+    _TESTS = [{
+        'url': ':ytfav',
+        'only_matching': True,
+    }]
+
+    def _real_extract(self, url):
+        return self.url_result(
+            'https://www.youtube.com/playlist?list=LL', ie=YoutubeTabIE.ie_key())
+
+
 class YoutubeRecommendedIE(YoutubeFeedsInfoExtractor):
     IE_DESC = 'YouTube.com recommended videos, ":ytrec" for short (requires authentication)'
-    _VALID_URL = r'https?://(?:www\.)?youtube\.com/feed/recommended|:ytrec(?:ommended)?'
+    _VALID_URL = r'https?://(?:www\.)?youtube\.com(?:/feed/recommended|/?[?#]|/?$)|:ytrec(?:ommended)?'
     _FEED_NAME = 'recommended'
     _PLAYLIST_TITLE = 'Youtube Recommended videos'
 
 
 class YoutubeSubscriptionsIE(YoutubeFeedsInfoExtractor):
     IE_DESC = 'YouTube.com subscriptions feed, "ytsubs" keyword (requires authentication)'
-    _VALID_URL = r'https?://(?:www\.)?youtube\.com/feed/subscriptions|:ytsubs(?:criptions)?'
+    _VALID_URL = r'https?://(?:www\.)?youtube\.com/feed/subscriptions|:ytsub(?:scription)?s?'
     _FEED_NAME = 'subscriptions'
     _PLAYLIST_TITLE = 'Youtube Subscriptions'
 
