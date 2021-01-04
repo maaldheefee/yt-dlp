@@ -43,6 +43,16 @@ This is a fork of [youtube-dlc](https://github.com/blackjack4494/yt-dlc) which i
 # CHANGES
 See [Commits](https://github.com/pukkandan/yt-dlc/commits) for more details
 
+### 2021.01.05-2
+* **Changed defaults:**
+    * Enabled `--ignore`
+    * Disabled `--video-multistreams` and `--audio-multistreams`
+    * Changed default format selection to `bv*+ba/b` when `--audio-multistreams` is disabled
+    * Changed default format sort order to `res,fps,codec,size,br,asr,proto,ext,has_audio,source,format_id`
+    * Changed default output template to `%(title)s [%(id)s].%(ext)s`
+    * Enabled `--list-formats-as-table`
+
+
 ### 2021.01.05
 * **Format Sort:** Added `--format-sort` (`-S`), `--format-sort-force` (`--S-force`) - See [Sorting Formats](#sorting-formats) for details
 * **Format Selection:** See [Format Selection](#format-selection) for details
@@ -97,7 +107,7 @@ youtube-dlc - download videos from youtube.com or other video platforms.
 youtube-dlc is a fork of youtube-dl with the intention of getting features tested by the community merged in the tool faster, since youtube-dl's development seems to be slowing down. (https://web.archive.org/web/20201014194602/https://github.com/ytdl-org/youtube-dl/issues/26462)
 
 
-## INSTALLATION
+### INSTALLATION
 [How to update](#update)
 
 **All Platforms**  
@@ -144,7 +154,7 @@ Then simply type this
     make
 
 
-## UPDATE
+### UPDATE
 **DO NOT UPDATE using `-U` !** instead download binaries again or when installed with pip use a described above when installing.  
 I will add some memorable short links to the binaries so you can download them easier.
 
