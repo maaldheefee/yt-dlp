@@ -13,6 +13,11 @@ exec(compile(open('youtube_dlc/version.py').read(),
 
 DESCRIPTION = 'Command-line program to download videos from YouTube.com and many other other video platforms.'
 
+LONG_DESCRIPTION = '\n\n'.join((
+    'Official repository: <https://github.com/pukkandan/yt-dlp>',
+    '**PS**: Many links in this document will not work since this is a copy of the README.md from Github',
+    open("README.md", "r", encoding="utf-8").read()))
+
 if len(sys.argv) >= 2 and sys.argv[1] == 'py2exe':
     print("inv")
 else:
@@ -63,7 +68,7 @@ setup(
     maintainer="pukkandan",
     maintainer_email="pukkandan@gmail.com",
     description=DESCRIPTION,
-    long_description=open("README.md", "r", encoding="utf-8").read(),
+    long_description=LONG_DESCRIPTION,
     long_description_content_type="text/markdown",
     url="https://github.com/pukkandan/yt-dlp",
     packages=find_packages(exclude=("youtube_dl","test",)),
