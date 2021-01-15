@@ -11,8 +11,7 @@ from distutils.spawn import spawn
 exec(compile(open('youtube_dlc/version.py').read(),
              'youtube_dlc/version.py', 'exec'))
 
-DESCRIPTION = 'Media downloader supporting various sites such as youtube'
-LONG_DESCRIPTION = 'Command-line program to download videos from YouTube.com and other video sites. Based on a more active community fork.'
+DESCRIPTION = 'Command-line program to download videos from YouTube.com and many other other video platforms.'
 
 if len(sys.argv) >= 2 and sys.argv[1] == 'py2exe':
     print("inv")
@@ -59,19 +58,15 @@ class build_lazy_extractors(Command):
         )
 
 setup(
-    name="youtube_dlc",
+    name="yt-dlp",
     version=__version__,
-    maintainer="Tom-Oliver Heidel",
-    maintainer_email="theidel@uni-bremen.de",
+    maintainer="pukkandan",
+    maintainer_email="pukkandan@gmail.com",
     description=DESCRIPTION,
-    long_description=LONG_DESCRIPTION,
-    # long_description_content_type="text/markdown",
+    long_description=open("README.md", "r", encoding="utf-8").read(),
+    long_description_content_type="text/markdown",
     url="https://github.com/pukkandan/yt-dlp",
     packages=find_packages(exclude=("youtube_dl","test",)),
-	#packages=[
-    #    'youtube_dlc',
-    #    'youtube_dlc.extractor', 'youtube_dlc.downloader',
-    #    'youtube_dlc.postprocessor'],
     classifiers=[
 	    "Topic :: Multimedia :: Video",
         "Development Status :: 5 - Production/Stable",
