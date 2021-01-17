@@ -798,6 +798,18 @@ def parseOpts(overrideArguments=None):
         '--id', default=False,
         action='store_true', dest='useid', help=optparse.SUPPRESS_HELP)
     filesystem.add_option(
+        '-H', '--home-dir',
+        dest='homepath', metavar='DIR', default='',
+        help=(
+            'Path where the video should be downloaded. Defaults to the current directory'
+            'This only works when the output template is a relative path'))
+    filesystem.add_option(
+        '--temp-dir',
+        dest='tempdir', metavar='DIR', default='',
+        help=(
+            'Path where the intermediate files are downloaded. '
+            'This only works when the output template is a relative path'))
+    filesystem.add_option(
         '-o', '--output',
         dest='outtmpl', metavar='TEMPLATE',
         help='Output filename template, see the "OUTPUT TEMPLATE" for details')
