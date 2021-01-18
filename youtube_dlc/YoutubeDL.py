@@ -114,7 +114,7 @@ from .postprocessor import (
     FFmpegFixupStretchedPP,
     FFmpegMergerPP,
     FFmpegPostProcessor,
-    FFmpegSubtitlesConvertorPP,
+    # FFmpegSubtitlesConvertorPP,
     get_postprocessor,
     MoveFilesAfterDownloadPP,
 )
@@ -2041,7 +2041,7 @@ class YoutubeDL(object):
 
         if self.params.get('skip_download', False):
             if self.params.get('convertsubtitles', False):
-                subconv = FFmpegSubtitlesConvertorPP(self, format=self.params.get('convertsubtitles'))
+                # subconv = FFmpegSubtitlesConvertorPP(self, format=self.params.get('convertsubtitles'))
                 filename_real_ext = os.path.splitext(filename)[1][1:]
                 filename_wo_ext = (
                     os.path.splitext(filename)[0]

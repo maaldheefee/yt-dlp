@@ -5,6 +5,7 @@ import shutil
 from .common import PostProcessor
 from ..utils import encodeFilename
 
+
 class MoveFilesAfterDownloadPP(PostProcessor):
     PP_NAME = 'MoveFiles'
 
